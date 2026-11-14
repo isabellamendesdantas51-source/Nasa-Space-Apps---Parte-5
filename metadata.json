@@ -1,0 +1,6 @@
+{
+  "name": "ARTEMIS II: LUNAR ODYSSEY",
+  "description": "Simulador espacial educativo integrado cobrindo montagem modular da Orion em 3D, orçamento global e por fase, viagem lunar com eventos dinâmicos, correção de trajetória e reentrada atmosférica.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

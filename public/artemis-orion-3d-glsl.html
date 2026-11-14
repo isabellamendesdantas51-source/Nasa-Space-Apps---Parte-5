@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ARTEMIS II: Orion 3D — HTML5 + CSS3 + JavaScript (Three.js & GLSL)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #040711;
+      color: #f1f5f9;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+    #viewport {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .hud-top {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 10;
+      background: rgba(9, 15, 29, 0.88);
+      border: 1px solid #1e293b;
+      border-radius: 10px;
+      padding: 12px 16px;
+      max-width: 360px;
+    }
+    .hud-top h1 {
+      font-size: 14px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #38bdf8;
+      margin-bottom: 4px;
+    }
+    .hud-top p {
+      font-size: 12px;
+      color: #94a3b8;
+      line-height: 1.45;
+    }
+    .hud-dock {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      background: rgba(9, 15, 29, 0.92);
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 10px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+      max-width: 94vw;
+    }
+    .btn {
+      background: #0f172a;
+      color: #e2e8f0;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 7px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .btn:hover { background: #1e293b; border-color: #38bdf8; }
+    .btn.active { background: #22d3ee; color: #020617; border-color: #22d3ee; }
+    .slider-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #cbd5e1;
+    }
+    input[type="range"] { accent-color: #22d3ee; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div id="viewport"></div>
+
+  <div class="hud-top">
+    <h1>ARTEMIS II · Nave Orion 3D (Three.js + GLSL)</h1>
+    <p>
+      Arraste para orbitar e use o scroll para zoom. Alterne entre modos para observar os shaders GLSL de propulsão, plasma de reentrada atmosférica e oceano.
+    </p>
+  </div>
+
+  <div class="hud-dock">
+    <button class="btn active" data-mode="orbit">Órbita &amp; Montagem</button>
+    <button class="btn" data-mode="burn">Ignição Motor (GLSL)</button>
+    <button class="btn" data-mode="plasma">Plasma Reentrada (GLSL)</button>
+    <button class="btn" data-mode="ocean">Pouso Oceano (GLSL)</button>
+    <label class="slider-wrap">
+      <span>Vista Explodida</span>
+      <input id="explodeRange" type="range" min="0" max="1" step="0.01" value="0" />
+    </label>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    const container = document.getElementById('viewport');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#040711');
+
+    const camera = new THREE.PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.1, 300);
+    camera.position.set(5.2, 2.4, 6.4);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    container.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.minDistance = 3.2;
+    controls.maxDistance = 18;
+
+    // Iluminação espacial
+    scene.add(new THREE.HemisphereLight('#7dd3fc', '#0f172a', 0.55));
+    const sun = new THREE.DirectionalLight('#fffbeb', 2.4);
+    sun.position.set(12, 8, 10);
+    scene.add(sun);
+
+    // Campo de estrelas
+    const starGeo = new THREE.BufferGeometry();
+    const starPos = new Float32Array(1200 * 3);
+    for (let i = 0; i < 1200; i++) {
+      const r = 65 + Math.random() * 80;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      starPos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      starPos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+      starPos[i * 3 + 2] = r * Math.cos(phi);
+    }
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+    const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: '#e2e8f0', size: 0.35 }));
+    scene.add(stars);
+
+    // =========================================================
+    // SHADERS GLSL CUSTOMIZADOS
+    // =========================================================
+    const plumeMaterial = new THREE.ShaderMaterial({
+      uniforms: { uTime: { value: 0 }, uThrottle: { value: 0 } },
+      vertexShader: `
+        uniform float uTime;
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          vec3 pos = position;
+          pos.x += sin(pos.y * 10.0 + uTime * 32.0) * 0.04 * (1.0 - vUv.y);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uTime;
+        uniform float uThrottle;
+        varying vec2 vUv;
+        void main() {
+          if (uThrottle <= 0.01) discard;
+          float axial = vUv.y;
+          float shock = 0.5 + 0.5 * sin(axial * 28.0 + uTime * 36.0);
+          vec3 blueCore = vec3(0.25, 0.82, 1.0);
+          vec3 orangeTail = vec3(1.0, 0.48, 0.08);
+          vec3 col = mix(orangeTail, blueCore, smoothstep(0.25, 0.85, axial));
+          col = mix(col, vec3(1.0), smoothstep(0.7, 1.0, axial) * shock);
+          gl_FragColor = vec4(col * 1.45, smoothstep(0.0, 0.7, axial) * uThrottle * 0.85);
+        }
+      `,
+      transparent: true, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false
+    });
+
+    const plasmaMaterial = new THREE.ShaderMaterial({
+      uniforms: { uTime: { value: 0 }, uIntensity: { value: 0 } },
+      vertexShader: `
+        uniform float uTime;
+        uniform float uIntensity;
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        varying vec3 vViewDir;
+        void main() {
+          vUv = uv;
+          vec3 pos = position + normal * (sin(position.y * 14.0 - uTime * 24.0) * 0.035 * uIntensity);
+          vec4 mv = modelViewMatrix * vec4(pos, 1.0);
+          vNormal = normalize(normalMatrix * normal);
+          vViewDir = normalize(-mv.xyz);
+          gl_Position = projectionMatrix * mv;
+        }
+      `,
+      fragmentShader: `
+        uniform float uTime;
+        uniform float uIntensity;
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        varying vec3 vViewDir;
+        float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float noise(vec2 p) {
+          vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);
+          return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+                     mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+        }
+        void main() {
+          if (uIntensity <= 0.01) discard;
+          float n = noise(vec2(vUv.x * 6.0, vUv.y * 4.0 - uTime * 3.8));
+          float fresnel = pow(1.0 - max(0.0, dot(vNormal, vViewDir)), 1.6);
+          vec3 col = mix(vec3(0.9, 0.15, 0.05), vec3(1.0, 0.52, 0.08), n);
+          col = mix(col, vec3(1.0, 0.96, 0.85), smoothstep(0.65, 0.95, n));
+          gl_FragColor = vec4(col * 1.4, (0.3 + fresnel * 0.65) * uIntensity);
+        }
+      `,
+      transparent: true, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false
+    });
+
+    const oceanMaterial = new THREE.ShaderMaterial({
+      uniforms: { uTime: { value: 0 }, uSunDir: { value: new THREE.Vector3(0.6, 0.55, 0.58).normalize() } },
+      vertexShader: `
+        uniform float uTime;
+        varying vec3 vWorldPos;
+        varying float vH;
+        varying vec3 vN;
+        float wave(vec2 p, float t) {
+          return sin(p.x * 0.42 + t * 1.9) * 0.16 + cos(p.y * 0.52 + t * 1.45) * 0.13;
+        }
+        void main() {
+          vec3 pos = position;
+          float h = wave(pos.xz, uTime);
+          pos.y += h;
+          float eps = 0.25;
+          vN = normalize(vec3(h - wave(pos.xz + vec2(eps, 0.0), uTime), eps, h - wave(pos.xz + vec2(0.0, eps), uTime)));
+          vH = h;
+          vec4 wp = modelMatrix * vec4(pos, 1.0);
+          vWorldPos = wp.xyz;
+          gl_Position = projectionMatrix * viewMatrix * wp;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uSunDir;
+        varying vec3 vWorldPos;
+        varying float vH;
+        varying vec3 vN;
+        void main() {
+          vec3 V = normalize(cameraPosition - vWorldPos);
+          vec3 N = normalize(vN);
+          float fresnel = pow(1.0 - max(0.0, dot(N, V)), 3.0);
+          vec3 col = mix(vec3(0.02, 0.2, 0.36), vec3(0.05, 0.65, 0.91), smoothstep(-0.2, 0.28, vH) * 0.45 + fresnel * 0.5);
+          float spec = pow(max(0.0, dot(N, normalize(uSunDir + V))), 72.0);
+          gl_FragColor = vec4(col + vec3(1.0, 0.97, 0.9) * spec * 0.85, 1.0);
+        }
+      `
+    });
+
+    // =========================================================
+    // MODELO 3D COMPOSTO DA NAVE ORION
+    // =========================================================
+    const orion = new THREE.Group();
+    scene.add(orion);
+
+    const cmMat = new THREE.MeshStandardMaterial({ color: '#e2e8f0', roughness: 0.42, metalness: 0.2 });
+    const metalMat = new THREE.MeshStandardMaterial({ color: '#94a3b8', roughness: 0.3, metalness: 0.88 });
+    const goldMat = new THREE.MeshStandardMaterial({ color: '#d97706', roughness: 0.25, metalness: 0.92 });
+    const solarMat = new THREE.MeshStandardMaterial({ color: '#0f2952', roughness: 0.22, metalness: 0.65 });
+    const heatMat = new THREE.MeshStandardMaterial({ color: '#3f2e26', roughness: 0.78, metalness: 0.08 });
+
+    // Crew Module
+    const cmGroup = new THREE.Group();
+    orion.add(cmGroup);
+    const cmBody = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 1.38, 1.25, 36), cmMat);
+    cmBody.position.y = 1.05;
+    cmGroup.add(cmBody);
+    const docking = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.62, 0.28, 28), new THREE.MeshStandardMaterial({ color: '#1e293b', metalness: 0.8, roughness: 0.35 }));
+    docking.position.y = 1.81;
+    cmGroup.add(docking);
+    const heatShield = new THREE.Mesh(new THREE.SphereGeometry(1.42, 36, 16, 0, Math.PI * 2, Math.PI * 0.68, Math.PI * 0.32), heatMat);
+    heatShield.position.y = 1.05;
+    cmGroup.add(heatShield);
+
+    // Plasma Shell GLSL
+    const plasmaMesh = new THREE.Mesh(new THREE.SphereGeometry(1.62, 32, 18, 0, Math.PI * 2, Math.PI * 0.5, Math.PI * 0.5), plasmaMaterial);
+    plasmaMesh.position.y = 0.85;
+    cmGroup.add(plasmaMesh);
+
+    // Flotation collar
+    const collar = new THREE.Mesh(new THREE.TorusGeometry(1.48, 0.2, 16, 40), new THREE.MeshStandardMaterial({ color: '#f97316', roughness: 0.4 }));
+    collar.rotation.x = Math.PI / 2;
+    collar.position.y = 0.5;
+    collar.visible = false;
+    cmGroup.add(collar);
+
+    // Service Module (ESM)
+    const esmGroup = new THREE.Group();
+    orion.add(esmGroup);
+    const esmBody = new THREE.Mesh(new THREE.CylinderGeometry(1.26, 1.26, 1.45, 32), metalMat);
+    esmBody.position.y = -0.35;
+    esmGroup.add(esmBody);
+    const mliBand = new THREE.Mesh(new THREE.CylinderGeometry(1.29, 1.29, 0.36, 32), goldMat);
+    mliBand.position.y = -0.78;
+    esmGroup.add(mliBand);
+
+    // 4 Solar Wings
+    const wings = [];
+    for (let i = 0; i < 4; i++) {
+      const a = (i * Math.PI) / 2 + Math.PI / 4;
+      const p = new THREE.Group();
+      p.position.set(Math.cos(a) * 1.26, -0.42, Math.sin(a) * 1.26);
+      p.rotation.y = -a;
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.05, 0.62), solarMat);
+      panel.position.set(2.0, 0, 0);
+      panel.rotation.x = 0.25;
+      p.add(panel);
+      esmGroup.add(p);
+      wings.push(p);
+    }
+
+    // AJ10 Engine Bell + GLSL Volumetric Plume
+    const engineGroup = new THREE.Group();
+    esmGroup.add(engineGroup);
+    const bell = new THREE.Mesh(new THREE.LatheGeometry([
+      new THREE.Vector2(0.18, 0), new THREE.Vector2(0.26, -0.18), new THREE.Vector2(0.56, -0.78)
+    ], 28), metalMat);
+    bell.position.y = -1.08;
+    engineGroup.add(bell);
+
+    const plumeCone = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.85, 3.6, 28, 12, true), plumeMaterial);
+    plumeCone.position.y = -3.45;
+    engineGroup.add(plumeCone);
+
+    // Ocean GLSL Plane
+    const ocean = new THREE.Mesh(new THREE.PlaneGeometry(90, 90, 48, 48).rotateX(-Math.PI / 2), oceanMaterial);
+    ocean.position.y = -0.45;
+    ocean.visible = false;
+    scene.add(ocean);
+
+    // Controls UI
+    let mode = 'orbit';
+    let explodeTarget = 0;
+    let explodeCurrent = 0;
+
+    document.querySelectorAll('.btn[data-mode]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.btn[data-mode]').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        mode = btn.dataset.mode;
+      });
+    });
+
+    document.getElementById('explodeRange').addEventListener('input', (e) => {
+      explodeTarget = Number(e.target.value);
+    });
+
+    const clock = new THREE.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = Math.min(clock.getDelta(), 0.1);
+      const t = clock.getElapsedTime();
+
+      explodeCurrent = THREE.MathUtils.damp(explodeCurrent, mode === 'orbit' ? explodeTarget : 0, 6, dt);
+      cmGroup.position.y = explodeCurrent * 0.95;
+      esmGroup.position.y = -explodeCurrent * 0.45;
+      engineGroup.position.y = -explodeCurrent * 0.85;
+      wings.forEach((w, i) => {
+        const a = (i * Math.PI) / 2 + Math.PI / 4;
+        w.position.set(Math.cos(a) * (1.26 + explodeCurrent * 0.65), -0.42, Math.sin(a) * (1.26 + explodeCurrent * 0.65));
+      });
+
+      plumeMaterial.uniforms.uTime.value = t;
+      plasmaMaterial.uniforms.uTime.value = t;
+      oceanMaterial.uniforms.uTime.value = t;
+
+      esmGroup.visible = mode !== 'plasma' && mode !== 'ocean';
+      ocean.visible = mode === 'ocean';
+      collar.visible = mode === 'ocean';
+      stars.visible = mode !== 'ocean';
+
+      plumeMaterial.uniforms.uThrottle.value = mode === 'burn' ? 1.0 : 0.0;
+      plasmaMaterial.uniforms.uIntensity.value = mode === 'plasma' ? 1.0 : 0.0;
+
+      if (mode === 'plasma') {
+        scene.background.set('#230c05');
+        orion.position.set((Math.random() - 0.5) * 0.03, 0, (Math.random() - 0.5) * 0.03);
+        orion.rotation.set(-0.6, t * 0.4, 0.15);
+      } else if (mode === 'ocean') {
+        scene.background.set('#3874a8');
+        orion.position.set(0, -0.58 + Math.sin(t * 1.8) * 0.08, 0);
+        orion.rotation.set(Math.sin(t * 1.4) * 0.06, t * 0.08, Math.cos(t * 1.6) * 0.06);
+      } else {
+        scene.background.set('#040711');
+        orion.position.set(0, Math.sin(t * 0.8) * 0.08, 0);
+        orion.rotation.set(0.15, t * 0.14, 0.08);
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
